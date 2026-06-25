@@ -77,8 +77,10 @@ export function TopicDetail({ topicId, trackName, onChanged, onDelete }: Props) 
 
   if (!topic) return <div className="placeholder">{t("common.loading")}</div>;
 
+  const isDone = topic.status === "done";
+
   return (
-    <div className="topic-detail">
+    <div className={`topic-detail${isDone ? " done" : ""}`}>
       <div className="topic-header-block">
         <span className="topic-track-label">{trackName}</span>
         <div className="topic-title-row">

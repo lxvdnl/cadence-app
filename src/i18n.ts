@@ -176,6 +176,7 @@ const en: Messages = {
   "habit.showHistory": "Calendar",
   "habit.hideHistory": "Hide calendar",
   "roadmap.sprintsLabel": "Sprints",
+  "roadmap.sprintDone": "Done",
   "roadmap.addSprint": "+ Add sprint",
   "roadmap.addMany": "+ Add many",
   "roadmap.addTopic": "+ Add topic",

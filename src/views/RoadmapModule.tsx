@@ -174,10 +174,11 @@ export function RoadmapModule({ track, onOpenTopic }: Props) {
         const total = list.length;
         const done = list.filter((x) => x.status === "done").length;
         const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const complete = total > 0 && done === total;
         return (
           <div
             key={sprint.id}
-            className="sprint-card"
+            className={`sprint-card${complete ? " complete" : ""}`}
             onClick={() => toggleSprintCollapse(sprint.id)}
           >
             <div className="sprint-head">
@@ -187,6 +188,7 @@ export function RoadmapModule({ track, onOpenTopic }: Props) {
                 </svg>
               </span>
               <h3 className="sprint-title">{sprint.title}</h3>
+              {complete && <span className="sprint-done-badge">✓ {t("roadmap.sprintDone")}</span>}
               <span className="sprint-progress">{done}/{total}</span>
               <button
                 className="sprint-menu-btn"

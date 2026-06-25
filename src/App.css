@@ -985,6 +985,36 @@ body {
   border-color: rgba(108, 140, 255, 0.2);
 }
 
+.sprint-card.complete {
+  border-color: color-mix(in srgb, #4cc38a 45%, var(--border));
+  background: linear-gradient(135deg,
+    color-mix(in srgb, #4cc38a 9%, var(--panel)) 0%,
+    var(--panel) 60%);
+}
+
+.sprint-card.complete .sprint-title {
+  color: #4cc38a;
+}
+
+.sprint-card.complete .bar-fill {
+  background: #4cc38a;
+}
+
+.sprint-done-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #4cc38a;
+  background: color-mix(in srgb, #4cc38a 14%, transparent);
+  border: 1px solid color-mix(in srgb, #4cc38a 35%, transparent);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
 .sprint-card .add-row {
   cursor: default;
 }
@@ -1373,6 +1403,14 @@ body {
   padding: 2px 8px;
   line-height: 1.4;
   margin-top: 4px;
+}
+
+.topic-detail.done .topic-detail-title {
+  color: #4cc38a;
+}
+
+.topic-detail.done .topic-track-label {
+  color: color-mix(in srgb, #4cc38a 70%, var(--muted));
 }
 
 .status-btn {
