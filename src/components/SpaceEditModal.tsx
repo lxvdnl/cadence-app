@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Space } from "../types";
+import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
 interface Props {
@@ -19,8 +20,8 @@ export function SpaceEditModal({ space, onClose, onSave }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
         <h2>{t("space.edit")}</h2>
 
         <label>{t("addTrack.name")}</label>
@@ -29,14 +30,12 @@ export function SpaceEditModal({ space, onClose, onSave }: Props) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder={t("space.namePlaceholder")}
         />
 
         <label>{t("space.goal")}</label>
         <input
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder={t("space.goalPlaceholder")}
           onKeyDown={(e) => e.key === "Enter" && submit()}
         />
 
@@ -49,6 +48,6 @@ export function SpaceEditModal({ space, onClose, onSave }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

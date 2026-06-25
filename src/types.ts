@@ -23,7 +23,6 @@ export interface Track {
   icon: string | null;
   format: TrackFormat;
   settings: string;
-  goal: string | null;
   description: string | null;
   tags: string | null;
   sort: number;
@@ -135,7 +134,6 @@ export interface TrackInput {
   name: string;
   color: string;
   format: TrackFormat;
-  goal?: string;
   description?: string;
   tags?: string;
   settings?: Record<string, unknown>;
@@ -155,13 +153,27 @@ export interface TemplateSprint {
   topics?: TemplateTopic[];
 }
 
+export interface TemplateCycleItem {
+  title: string;
+  target?: number;
+}
+
+export interface TemplateSimpleItem {
+  title: string;
+}
+
+export interface TrackSeed {
+  sprints?: TemplateSprint[];
+  cycleItems?: TemplateCycleItem[];
+  simpleItems?: TemplateSimpleItem[];
+}
+
 export interface TrackTemplate {
   schema: "studyplanner.track";
   version: 1;
   name: string;
   format: TrackFormat;
   color?: string;
-  goal?: string;
   description?: string;
   tags?: string | string[];
   settings?: Record<string, unknown>;

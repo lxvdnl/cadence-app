@@ -1,3 +1,5 @@
+import { ModalBackdrop } from "./ModalBackdrop";
+
 interface Props {
   title: string;
   body: string;
@@ -18,8 +20,8 @@ export function ConfirmDialog({
   onCancel,
 }: Props) {
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal modal-sm" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onCancel}>
+      <div className="modal modal-sm">
         <h2>{title}</h2>
         <p className="confirm-body">{body}</p>
         <div className="modal-actions">
@@ -34,6 +36,6 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

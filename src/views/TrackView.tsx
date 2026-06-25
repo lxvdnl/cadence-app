@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Track } from "../types";
 import { formatLabel } from "../types";
 import { RoadmapModule } from "./RoadmapModule";
@@ -12,18 +13,22 @@ interface Props {
 }
 
 export function TrackView({ track, onOpenTopic }: Props) {
+  const [headerActionsEl, setHeaderActionsEl] = useState<HTMLDivElement | null>(null);
+
   return (
     <div className="view">
       <div className="view-header">
         <span className="view-dot" style={{ background: track.color }} />
         <h1>{track.name}</h1>
         <span className="view-badge">{track.format}</span>
+        <div className="view-header-spacer" />
+        <div ref={setHeaderActionsEl} className="view-header-actions" />
       </div>
 
       {track.format === "roadmap" ? (
         <RoadmapModule track={track} onOpenTopic={onOpenTopic} />
       ) : track.format === "cycle" ? (
-        <CycleModule track={track} />
+        <CycleModule track={track} headerActionsEl={headerActionsEl} />
       ) : track.format === "simple" ? (
         <SimpleModule track={track} />
       ) : track.format === "habit" ? (

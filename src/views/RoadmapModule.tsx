@@ -39,6 +39,17 @@ export function RoadmapModule({ track, onOpenTopic }: Props) {
   const [editSprint, setEditSprint] = useState<Sprint | null>(null);
   const [deleteSprint_, setDeleteSprint] = useState<{ id: number; name: string } | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [collapsedSprints, setCollapsedSprints] = useState<Set<number>>(new Set());
+  const [sprintMenuId, setSprintMenuId] = useState<number | null>(null);
+
+  const toggleSprintCollapse = (id: number) => {
+    setCollapsedSprints((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const loadTopics = async (sprintList: Sprint[]) => {
     const map: Record<number, Topic[]> = {};
@@ -52,6 +63,7 @@ export function RoadmapModule({ track, onOpenTopic }: Props) {
     const list = await listSprints(track.id);
     setSprints(list);
     await loadTopics(list);
+    setCollapsedSprints(new Set(list.map((s) => s.id)));
   };
 
   useEffect(() => {
@@ -115,83 +127,28 @@ export function RoadmapModule({ track, onOpenTopic }: Props) {
 
   return (
     <div className="roadmap">
-      {sprints.length === 0 && !addingSprint && (
-        <div className="placeholder">{t("roadmap.empty")}</div>
-      )}
+      <div className="roadmap-header">
+        <span className="cycle-block-label">{t("roadmap.sprintsLabel")}</span>
+        <div className="cycle-items-actions">
+          <button className="btn-add" onClick={() => setAddingSprint(true)} disabled={addingSprint}>
+            {t("roadmap.addSprint")}
+          </button>
+          <button className="btn-add" onClick={() => setBulkOpen(true)}>
+            {t("roadmap.addMany")}
+          </button>
+        </div>
+      </div>
 
-      {sprints.map((sprint) => {
-        const list = topics[sprint.id] ?? [];
-        const total = list.length;
-        const done = list.filter((x) => x.status === "done").length;
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-        return (
-          <div
-            key={sprint.id}
-            className="sprint-card"
-            onClick={() => setEditSprint(sprint)}
-          >
-            <div className="sprint-head">
-              <h3 className="sprint-title">{sprint.title}</h3>
-              <span className="sprint-progress">{done}/{total}</span>
-            </div>
-
-            {sprint.description && (
-              <p className="sprint-desc">{sprint.description}</p>
-            )}
-
-            <div className="bar">
-              <div className="bar-fill" style={{ width: `${pct}%` }} />
-            </div>
-
-            <ul className="topic-list">
-              {list.map((topic) => (
-                <li
-                  key={topic.id}
-                  className="topic-row"
-                  onClick={(e) => { e.stopPropagation(); onOpenTopic(topic.id); }}
-                >
-                  <span
-                    className="topic-check-wrap"
-                    onClick={(e) => { e.stopPropagation(); toggleTopicDone(topic, sprint.id); }}
-                  >
-                    <input
-                      type="checkbox"
-                      className="topic-check"
-                      checked={topic.status === "done"}
-                      onChange={() => {}}
-                    />
-                  </span>
-                  <span className={"status-pill " + topic.status}>
-                    {t(`topic.status.${topic.status}`)}
-                  </span>
-                  <span className="topic-name">{topic.title}</span>
-                </li>
-              ))}
-              {list.length === 0 && (
-                <li className="topic-empty">{t("roadmap.noTopics")}</li>
-              )}
-            </ul>
-
-            <div className="sprint-add-topic">
-              <button
-                className="btn-add"
-                onClick={(e) => { e.stopPropagation(); setAddTopicSprint(sprint.id); }}
-              >
-                {t("roadmap.addTopic")}
-              </button>
-              <button
-                className="btn-add"
-                onClick={(e) => { e.stopPropagation(); setBulkTopicSprint(sprint.id); }}
-              >
-                {t("roadmap.addManyTopics")}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-
-      {addingSprint ? (
-        <div className="add-row add-sprint">
+      {addingSprint && (
+        <div
+          className="add-row add-sprint"
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setAddingSprint(false);
+              setSprintDraft("");
+            }
+          }}
+        >
           <input
             autoFocus
             value={sprintDraft}
@@ -206,16 +163,115 @@ export function RoadmapModule({ track, onOpenTopic }: Props) {
             {t("roadmap.add")}
           </button>
         </div>
-      ) : (
-        <div className="sprint-add-row">
-          <button className="btn-add" onClick={() => setAddingSprint(true)}>
-            {t("roadmap.addSprint")}
-          </button>
-          <button className="btn-add" onClick={() => setBulkOpen(true)}>
-            {t("roadmap.addMany")}
-          </button>
-        </div>
       )}
+
+      {sprints.length === 0 && !addingSprint && (
+        <div className="placeholder">{t("roadmap.empty")}</div>
+      )}
+
+      {sprints.map((sprint) => {
+        const list = topics[sprint.id] ?? [];
+        const total = list.length;
+        const done = list.filter((x) => x.status === "done").length;
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        return (
+          <div
+            key={sprint.id}
+            className="sprint-card"
+            onClick={() => toggleSprintCollapse(sprint.id)}
+          >
+            <div className="sprint-head">
+              <span className={`sprint-collapse-arrow${collapsedSprints.has(sprint.id) ? " collapsed" : ""}`}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <polyline points="2,3 5,7 8,3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
+              <h3 className="sprint-title">{sprint.title}</h3>
+              <span className="sprint-progress">{done}/{total}</span>
+              <button
+                className="sprint-menu-btn"
+                onClick={(e) => { e.stopPropagation(); setSprintMenuId(sprintMenuId === sprint.id ? null : sprint.id); }}
+              >
+                ⋯
+              </button>
+              {sprintMenuId === sprint.id && (
+                <>
+                  <div className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setSprintMenuId(null); }} />
+                  <div className="sprint-menu" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => { setSprintMenuId(null); setEditSprint(sprint); }}>
+                      Edit
+                    </button>
+                    <div className="menu-separator" />
+                    <button
+                      className="menu-danger"
+                      onClick={() => { setSprintMenuId(null); setDeleteSprint({ id: sprint.id, name: sprint.title }); }}
+                    >
+                      {t("common.delete")}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {sprint.description && (
+              <p className="sprint-desc">{sprint.description}</p>
+            )}
+
+            <div className="bar">
+              <div className="bar-fill" style={{ width: `${pct}%` }} />
+            </div>
+
+            {!collapsedSprints.has(sprint.id) && (
+              <>
+                <ul className="topic-list">
+                  {list.map((topic) => (
+                    <li
+                      key={topic.id}
+                      className="topic-row"
+                      onClick={(e) => { e.stopPropagation(); onOpenTopic(topic.id); }}
+                    >
+                      <span
+                        className="topic-check-wrap"
+                        onClick={(e) => { e.stopPropagation(); toggleTopicDone(topic, sprint.id); }}
+                      >
+                        <input
+                          type="checkbox"
+                          className="topic-check"
+                          checked={topic.status === "done"}
+                          onChange={() => {}}
+                        />
+                      </span>
+                      <span className={"status-pill " + topic.status}>
+                        {t(`topic.status.${topic.status}`)}
+                      </span>
+                      <span className="topic-name">{topic.title}</span>
+                    </li>
+                  ))}
+                  {list.length === 0 && (
+                    <li className="topic-empty">{t("roadmap.noTopics")}</li>
+                  )}
+                </ul>
+
+                <div className="sprint-add-topic">
+                  <button
+                    className="btn-add"
+                    onClick={(e) => { e.stopPropagation(); setAddTopicSprint(sprint.id); }}
+                  >
+                    {t("roadmap.addTopic")}
+                  </button>
+                  <button
+                    className="btn-add"
+                    onClick={(e) => { e.stopPropagation(); setBulkTopicSprint(sprint.id); }}
+                  >
+                    {t("roadmap.addManyTopics")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+
 
       {bulkOpen && (
         <BulkAddSprintsModal
@@ -243,10 +299,6 @@ export function RoadmapModule({ track, onOpenTopic }: Props) {
           sprint={editSprint}
           onClose={() => setEditSprint(null)}
           onSave={saveSprint}
-          onDelete={() => {
-            setEditSprint(null);
-            setDeleteSprint({ id: editSprint.id, name: editSprint.title });
-          }}
         />
       )}
 

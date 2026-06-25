@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
 interface Props {
@@ -17,8 +18,8 @@ export function AddSpaceModal({ onClose, onCreate }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
         <h2>{t("space.new")}</h2>
 
         <label>{t("addTrack.name")}</label>
@@ -27,14 +28,12 @@ export function AddSpaceModal({ onClose, onCreate }: Props) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-          placeholder={t("space.namePlaceholder")}
         />
 
         <label>{t("space.goal")}</label>
         <input
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
-          placeholder={t("space.goalPlaceholder")}
         />
 
         <div className="modal-actions">
@@ -50,6 +49,6 @@ export function AddSpaceModal({ onClose, onCreate }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

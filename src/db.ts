@@ -121,12 +121,11 @@ export async function createTrack(input: TrackInput): Promise<number> {
   const sort = next[0]?.m ?? 0;
   const settings = JSON.stringify(input.settings ?? {});
   const res = await db.execute(
-    "INSERT INTO track (name, color, format, goal, description, tags, settings, sort, space_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO track (name, color, format, description, tags, settings, sort, space_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [
       input.name,
       input.color,
       input.format,
-      input.goal ?? null,
       input.description ?? null,
       input.tags ?? null,
       settings,
@@ -144,7 +143,7 @@ export async function renameTrack(id: number, name: string): Promise<void> {
 
 export async function updateTrack(
   id: number,
-  fields: Partial<Pick<Track, "name" | "color" | "goal" | "description" | "tags">>
+  fields: Partial<Pick<Track, "name" | "color" | "description" | "tags">>
 ): Promise<void> {
   const db = await getDb();
   const keys = Object.keys(fields);
@@ -493,6 +492,26 @@ export async function completeCycle(
   await db.execute("UPDATE cycle_item SET count = 0 WHERE track_id = ?", [
     trackId,
   ]);
+}
+
+export async function seedCycleItems(
+  trackId: number,
+  items: import("./types").TemplateCycleItem[]
+): Promise<void> {
+  for (const item of items) {
+    if (!item?.title) continue;
+    await createCycleItem(trackId, item.title, item.target ?? 1);
+  }
+}
+
+export async function seedSimpleItems(
+  trackId: number,
+  items: import("./types").TemplateSimpleItem[]
+): Promise<void> {
+  for (const item of items) {
+    if (!item?.title) continue;
+    await createSimpleItem(trackId, item.title);
+  }
 }
 
 export async function seedRoadmap(

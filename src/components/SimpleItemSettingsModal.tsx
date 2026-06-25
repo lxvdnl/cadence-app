@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SimpleItem } from "../types";
+import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
 interface Props {
@@ -20,8 +21,8 @@ export function SimpleItemSettingsModal({ item, onClose, onSave, onDelete }: Pro
     estDays !== item.est_days;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
         <input
           className="ci-modal-title-input"
           value={title}
@@ -74,6 +75,6 @@ export function SimpleItemSettingsModal({ item, onClose, onSave, onDelete }: Pro
           )}
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

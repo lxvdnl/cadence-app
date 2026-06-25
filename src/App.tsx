@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Space, Track, TrackInput, TrackTemplate, View } from "./types";
+import type { Space, Track, TrackInput, TrackSeed, View } from "./types";
 import {
   createSpace,
   createTrack,
@@ -10,10 +10,11 @@ import {
   renameTrack,
   reorderTracks,
   seedRoadmap,
+  seedCycleItems,
+  seedSimpleItems,
   setTrackSpace,
   updateSpace,
 } from "./db";
-import { templateToInput } from "./templates";
 import { Sidebar } from "./components/Sidebar";
 import { AddTrackModal } from "./components/AddTrackModal";
 import { AddSpaceModal } from "./components/AddSpaceModal";
@@ -31,6 +32,7 @@ function App() {
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [viewStack, setViewStack] = useState<View[]>([{ type: "dashboard" }]);
   const [adding, setAdding] = useState(false);
+  const [addingDefaultSpace, setAddingDefaultSpace] = useState<number | null>(null);
   const [addingSpace, setAddingSpace] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Track | null>(null);
   const [pendingDeleteSpace, setPendingDeleteSpace] = useState<Space | null>(null);
@@ -60,16 +62,11 @@ function App() {
       .finally(() => setReady(true));
   }, []);
 
-  const handleCreate = async (input: TrackInput) => {
+  const handleCreate = async (input: TrackInput, seed?: TrackSeed) => {
     const id = await createTrack(input);
-    setAdding(false);
-    await refresh();
-    resetTo({ type: "track", id });
-  };
-
-  const handleCreateFromTemplate = async (tpl: TrackTemplate) => {
-    const id = await createTrack(templateToInput(tpl));
-    if (tpl.sprints?.length) await seedRoadmap(id, tpl.sprints);
+    if (seed?.sprints?.length) await seedRoadmap(id, seed.sprints);
+    if (seed?.cycleItems?.length) await seedCycleItems(id, seed.cycleItems);
+    if (seed?.simpleItems?.length) await seedSimpleItems(id, seed.simpleItems);
     setAdding(false);
     await refresh();
     resetTo({ type: "track", id });
@@ -133,7 +130,8 @@ function App() {
         spaces={spaces}
         view={view}
         onSelect={resetTo}
-        onAdd={() => setAdding(true)}
+        onAdd={() => { setAddingDefaultSpace(null); setAdding(true); }}
+        onAddTrackInSpace={(spaceId) => { setAddingDefaultSpace(spaceId); setAdding(true); }}
         onAddSpace={() => setAddingSpace(true)}
         onRequestDelete={setPendingDelete}
         onRename={handleRename}
@@ -189,9 +187,9 @@ function App() {
       {adding && (
         <AddTrackModal
           spaces={spaces}
-          onClose={() => setAdding(false)}
+          defaultSpaceId={addingDefaultSpace}
+          onClose={() => { setAdding(false); setAddingDefaultSpace(null); }}
           onCreate={handleCreate}
-          onCreateFromTemplate={handleCreateFromTemplate}
         />
       )}
 

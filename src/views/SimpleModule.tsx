@@ -9,6 +9,8 @@ import {
   updateSimpleItem,
 } from "../db";
 import { AddSimpleItemModal } from "../components/AddSimpleItemModal";
+import { BulkAddSimpleItemsModal } from "../components/BulkAddSimpleItemsModal";
+import type { BulkSimpleItem } from "../components/BulkAddSimpleItemsModal";
 import { SimpleItemSettingsModal } from "../components/SimpleItemSettingsModal";
 import { t } from "../i18n";
 
@@ -19,6 +21,7 @@ interface Props {
 export function SimpleModule({ track }: Props) {
   const [items, setItems] = useState<SimpleItem[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<SimpleItem | null>(null);
 
   const refresh = async () => setItems(await listSimpleItems(track.id));
@@ -34,6 +37,14 @@ export function SimpleModule({ track }: Props) {
   const addItem = async (title: string, estDays: number) => {
     await createSimpleItem(track.id, title, estDays);
     setAddOpen(false);
+    await refresh();
+  };
+
+  const addBulkItems = async (bulkItems: BulkSimpleItem[]) => {
+    for (const it of bulkItems) {
+      await createSimpleItem(track.id, it.title, it.estDays);
+    }
+    setBulkOpen(false);
     await refresh();
   };
 
@@ -64,16 +75,15 @@ export function SimpleModule({ track }: Props) {
 
   return (
     <div className="simple">
-      <div className="simple-head">
-        <div className="section-head">
-          <span>{t("simple.progress")}</span>
-          <span className="task-count">
-            {done}/{total} · {pct}%
-          </span>
+      <div className={`simple-progress-card${pct === 100 ? " complete" : ""}`}>
+        <div className="simple-progress-top">
+          <span className="simple-progress-label">{t("simple.progress")}</span>
+          <span className="simple-progress-pct">{pct}%</span>
         </div>
-        <div className="bar">
-          <div className="bar-fill" style={{ width: `${pct}%` }} />
+        <div className="simple-progress-bar">
+          <div className="simple-progress-fill" style={{ width: `${pct}%` }} />
         </div>
+        <div className="simple-progress-count">{done}/{total}</div>
       </div>
 
       {items.length === 0 ? (
@@ -110,14 +120,26 @@ export function SimpleModule({ track }: Props) {
         </ul>
       )}
 
-      <button className="btn-add" onClick={() => setAddOpen(true)}>
-        {t("simple.addItem")}
-      </button>
+      <div className="simple-add-row">
+        <button className="btn-add" onClick={() => setAddOpen(true)}>
+          {t("simple.addItem")}
+        </button>
+        <button className="btn-add" onClick={() => setBulkOpen(true)}>
+          {t("simple.addMany")}
+        </button>
+      </div>
 
       {addOpen && (
         <AddSimpleItemModal
           onClose={() => setAddOpen(false)}
           onCreate={addItem}
+        />
+      )}
+
+      {bulkOpen && (
+        <BulkAddSimpleItemsModal
+          onClose={() => setBulkOpen(false)}
+          onSubmit={addBulkItems}
         />
       )}
 

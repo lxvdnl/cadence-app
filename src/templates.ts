@@ -24,7 +24,6 @@ export function templateToInput(tpl: TrackTemplate): TrackInput {
     name: tpl.name.trim(),
     color: tpl.color ?? "#6c8cff",
     format: tpl.format,
-    goal: tpl.goal?.trim() || undefined,
     description: tpl.description?.trim() || undefined,
     tags: tags?.trim() || undefined,
     settings: tpl.settings ?? {},

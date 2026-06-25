@@ -15,24 +15,12 @@ interface Props {
   track: Track;
 }
 
-const GRID_DAYS = 35;
-
 function getMonday(d: Date): Date {
   const r = new Date(d);
   const day = r.getDay();
   r.setDate(r.getDate() + (day === 0 ? -6 : 1 - day));
   r.setHours(0, 0, 0, 0);
   return r;
-}
-
-function formatWeekLabel(start: string, end: string): string {
-  const s = new Date(start + "T00:00:00");
-  const e = new Date(end + "T00:00:00");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const sm = months[s.getMonth()];
-  const em = months[e.getMonth()];
-  if (sm === em) return `${sm} ${s.getDate()}–${e.getDate()}`;
-  return `${sm} ${s.getDate()} – ${em} ${e.getDate()}`;
 }
 
 export function HabitModule({ track }: Props) {
@@ -86,51 +74,229 @@ export function HabitModule({ track }: Props) {
   );
 
   const gridDays = useMemo(() => {
-    if (settings.mode !== "daily") return [];
     const today = new Date();
     const mondayCurrent = getMonday(today);
-    const weeksToShow = showHistory ? Math.min(GRID_DAYS / 7, 5) : 1;
     const days: { date: string; day: number; today: boolean; future: boolean }[] = [];
 
-    for (let w = weeksToShow - 1; w >= 0; w--) {
-      const weekStart = new Date(mondayCurrent);
-      weekStart.setDate(mondayCurrent.getDate() - w * 7);
-      for (let d = 0; d < 7; d++) {
-        const day = new Date(weekStart);
-        day.setDate(weekStart.getDate() + d);
-        const ds = toDateStr(day);
-        days.push({ date: ds, day: day.getDate(), today: ds === todayStr, future: ds > todayStr });
-      }
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(mondayCurrent);
+      day.setDate(mondayCurrent.getDate() + d);
+      const ds = toDateStr(day);
+      days.push({ date: ds, day: day.getDate(), today: ds === todayStr, future: ds > todayStr });
     }
     return days;
-  }, [todayStr, settings.mode, showHistory]);
+  }, [todayStr]);
+
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+
+  const monthCells = useMemo(() => {
+    const year = calMonth.getFullYear();
+    const month = calMonth.getMonth();
+    const first = new Date(year, month, 1);
+    const startWeekday = (first.getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: ({ date: string; day: number; today: boolean; future: boolean } | null)[] = [];
+    for (let i = 0; i < startWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, month, d);
+      const ds = toDateStr(date);
+      cells.push({ date: ds, day: d, today: ds === todayStr, future: ds > todayStr });
+    }
+    return cells;
+  }, [calMonth, todayStr]);
+
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const now = new Date();
+  const atCurrentMonth =
+    calMonth.getFullYear() === now.getFullYear() && calMonth.getMonth() === now.getMonth();
+  const prevMonth = () => setCalMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1));
+  const nextMonth = () => setCalMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
+
+  const openHistory = () => {
+    setShowHistory((v) => {
+      if (!v) {
+        const d = new Date();
+        setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+      }
+      return !v;
+    });
+  };
+
+  const calendarSection = (
+    <>
+      <button
+        className={`habit-history-toggle${showHistory ? " open" : ""}`}
+        onClick={openHistory}
+      >
+        <span className="habit-history-chevron">
+          <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+            <polyline points="2,3 5,7 8,3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </span>
+        {showHistory ? t("habit.hideHistory") : t("habit.showHistory")}
+      </button>
+
+      {showHistory && (
+        <div className="habit-calendar">
+          <div className="habit-cal-head">
+            <button className="habit-cal-nav" onClick={prevMonth} aria-label="Previous month">
+              <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+                <polyline points="6.5,2 3,5 6.5,8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <span className="habit-cal-title">
+              {monthNames[calMonth.getMonth()]} {calMonth.getFullYear()}
+            </span>
+            <button
+              className="habit-cal-nav"
+              onClick={nextMonth}
+              disabled={atCurrentMonth}
+              aria-label="Next month"
+            >
+              <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+                <polyline points="3.5,2 7,5 3.5,8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div className="habit-grid-labels habit-cal-labels">
+            {["Mo","Tu","We","Th","Fr","Sa","Su"].map((l) => (
+              <div key={l} className="habit-day-label">{l}</div>
+            ))}
+          </div>
+          <div className="habit-grid habit-cal-grid">
+            {monthCells.map((cell, i) =>
+              cell === null ? (
+                <div key={`e${i}`} className="habit-cal-empty" />
+              ) : (
+                <button
+                  key={cell.date}
+                  className={
+                    "habit-cell" +
+                    (checkins.has(cell.date) ? " done" : "") +
+                    (cell.today ? " today" : "") +
+                    (cell.future ? " future" : "")
+                  }
+                  onClick={() => !cell.future && toggle(cell.date)}
+                  disabled={cell.future}
+                  title={cell.date}
+                >
+                  {cell.day}
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   if (settings.mode === "daily") {
     const streak = dailyStats?.streak ?? 0;
-    const best = dailyStats?.best ?? 0;
+    const tier = streak >= 30 ? 3 : streak >= 7 ? 2 : streak >= 1 ? 1 : 0;
+
+    const elapsed = gridDays.filter((c) => !c.future).length;
+    const weekDone = gridDays.filter((c) => !c.future && checkins.has(c.date)).length;
+    const weekPct = elapsed > 0 ? Math.round((weekDone / elapsed) * 100) : 0;
+    const weekMetDaily = elapsed > 0 && weekDone === elapsed;
 
     return (
-      <div className="habit">
-        <div className="habit-stats">
-          <div className="habit-streak-block">
-            <div className="habit-streak-num">{streak}</div>
+      <div className={`habit habit-daily tier-${tier}`}>
+        <div
+          className={`habit-stats habit-stats-daily habit-stats-clickable${todayDone ? " secured" : " at-risk"}`}
+          onClick={() => toggle(todayStr)}
+        >
+          <div className={`habit-streak-block tier-${tier}${todayDone ? " secured" : " at-risk"}`}>
+            <div className="habit-streak-num">
+              {streak > 0 && <span className="habit-fire">🔥</span>}
+              {streak}
+            </div>
             <div className="habit-streak-label">{t("habit.dayStreak")}</div>
           </div>
-          <div className="habit-stat">
-            <div className="habit-stat-num">{best}</div>
-            <div className="habit-stat-label">{t("habit.best")}</div>
-          </div>
-          <button className="btn-primary habit-mark-btn" onClick={() => toggle(todayStr)}>
+          <span className="habit-mark-text">
             {todayDone ? t("habit.unmarkToday") : t("habit.markToday")}
-          </button>
+          </span>
         </div>
 
-        <div className="habit-grid-labels">
+        <div className={`habit-week-card${weekMetDaily ? " met" : ""}`}>
+          <div className="habit-week-card-head">
+            <span className="habit-week-card-label">{t("habit.thisWeek")}</span>
+            <span className="habit-week-card-count">{weekDone}/{elapsed}</span>
+          </div>
+          <div className="habit-week-progress">
+            <div className="habit-week-progress-fill" style={{ width: `${weekPct}%` }} />
+          </div>
+          <div className="habit-grid-labels habit-week-labels">
+            {["Mo","Tu","We","Th","Fr","Sa","Su"].map((l) => (
+              <div key={l} className="habit-day-label">{l}</div>
+            ))}
+          </div>
+          <div className="habit-grid habit-week-grid">
+            {gridDays.map((cell) => (
+              <button
+                key={cell.date}
+                className={
+                  "habit-cell" +
+                  (checkins.has(cell.date) ? " done" : "") +
+                  (cell.today ? " today" : "") +
+                  (cell.future ? " future" : "")
+                }
+                onClick={() => !cell.future && toggle(cell.date)}
+                disabled={cell.future}
+                title={cell.date}
+              >
+                {cell.day}
+              </button>
+            ))}
+          </div>
+        </div>
+        {calendarSection}
+      </div>
+    );
+  }
+
+  const currentCount = weeklyData?.currentCount ?? 0;
+  const target = settings.daysPerWeek;
+  const pct = target > 0 ? Math.min(100, Math.round((currentCount / target) * 100)) : 0;
+  const pastStreak = weeklyData?.streak ?? 0;
+  const weekMet = currentCount >= target;
+  const displayStreak = pastStreak + (weekMet ? 1 : 0);
+  const tier = displayStreak >= 12 ? 3 : displayStreak >= 4 ? 2 : displayStreak >= 1 ? 1 : 0;
+
+  return (
+    <div className={`habit habit-weekly tier-${tier}`}>
+      <div
+        className={`habit-stats habit-stats-daily habit-stats-clickable${weekMet ? " secured" : " at-risk"}`}
+        onClick={() => toggle(todayStr)}
+      >
+        <div className={`habit-streak-block tier-${tier}${weekMet ? " secured" : " at-risk"}`}>
+          <div className="habit-streak-num">
+            {displayStreak > 0 && <span className="habit-fire">🔥</span>}
+            {displayStreak}
+          </div>
+          <div className="habit-streak-label">{t("habit.weekStreak")}</div>
+        </div>
+        <span className="habit-mark-text">
+          {todayDone ? t("habit.unmarkToday") : t("habit.markToday")}
+        </span>
+      </div>
+
+      <div className={`habit-week-card${weekMet ? " met" : ""}`}>
+        <div className="habit-week-card-head">
+          <span className="habit-week-card-label">{t("habit.thisWeek")}</span>
+          <span className="habit-week-card-count">{currentCount}/{target}</span>
+        </div>
+        <div className="habit-week-progress">
+          <div className="habit-week-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="habit-grid-labels habit-week-labels">
           {["Mo","Tu","We","Th","Fr","Sa","Su"].map((l) => (
             <div key={l} className="habit-day-label">{l}</div>
           ))}
         </div>
-        <div className="habit-grid">
+        <div className="habit-grid habit-week-grid">
           {gridDays.map((cell) => (
             <button
               key={cell.date}
@@ -148,78 +314,9 @@ export function HabitModule({ track }: Props) {
             </button>
           ))}
         </div>
-        <button className="btn-ghost habit-history-toggle" onClick={() => setShowHistory((v) => !v)}>
-          {showHistory ? t("habit.hideHistory") : t("habit.showHistory")}
-        </button>
-      </div>
-    );
-  }
-
-  const currentCount = weeklyData?.currentCount ?? 0;
-  const target = settings.daysPerWeek;
-  const pct = target > 0 ? Math.min(100, Math.round((currentCount / target) * 100)) : 0;
-  const streak = weeklyData?.streak ?? 0;
-  const best = weeklyData?.best ?? 0;
-  const weeks = weeklyData?.weeks ?? [];
-
-  return (
-    <div className="habit">
-      <div className="habit-stats">
-        <div className="habit-period-card">
-          <div className="habit-period-label">
-            {t("habit.thisWeek")}: {currentCount}/{target}
-          </div>
-          <div className="bar">
-            <div className="bar-fill" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-        <div className="habit-stat">
-          <div className="habit-stat-num">{streak}</div>
-          <div className="habit-stat-label">{t("habit.streak")} · {t("habit.weeks")}</div>
-        </div>
-        <div className="habit-stat">
-          <div className="habit-stat-num">{best}</div>
-          <div className="habit-stat-label">{t("habit.best")}</div>
-        </div>
-        <button className="btn-primary habit-mark-btn" onClick={() => toggle(todayStr)}>
-          {todayDone ? t("habit.unmarkToday") : t("habit.markToday")}
-        </button>
       </div>
 
-      <div className="section-head">
-        <span>{t("habit.weeklyHistory")}</span>
-      </div>
-      <div className="habit-weeks">
-        {weeks.map((week) => {
-          const wpct = target > 0 ? Math.min(100, Math.round((week.count / target) * 100)) : 0;
-          const met = week.count >= target;
-          return (
-            <div
-              key={week.start}
-              className={`habit-week-row${week.isCurrent ? " current" : met ? " met" : " missed"}`}
-            >
-              <span className="habit-week-label">{formatWeekLabel(week.start, week.end)}</span>
-              <div className="habit-week-right">
-                {week.isCurrent ? (
-                  <>
-                    <div className="habit-week-bar">
-                      <div className="habit-week-fill" style={{ width: `${wpct}%` }} />
-                    </div>
-                    <span className="habit-week-count">{week.count}/{target}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="habit-week-count">{week.count}/{target}</span>
-                    <span className={`habit-week-status ${met ? "met" : "missed"}`}>
-                      {met ? "✓" : "✗"}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {calendarSection}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
 interface Props {
@@ -17,8 +18,8 @@ export function AddSimpleItemModal({ onClose, onCreate }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
         <h2>{t("simple.addItemTitle")}</h2>
 
         <input
@@ -26,7 +27,7 @@ export function AddSimpleItemModal({ onClose, onCreate }: Props) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-          placeholder={t("simple.addItem")}
+          placeholder={t("simple.namePlaceholder")}
           autoFocus
         />
 
@@ -60,6 +61,6 @@ export function AddSimpleItemModal({ onClose, onCreate }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

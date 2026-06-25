@@ -16,6 +16,7 @@ interface Props {
   onDeleteSpace: (space: Space) => void;
   onEditSpace: (space: Space) => void;
   onMoveTrack: (trackId: number, spaceId: number | null, beforeTrackId: number | null) => void;
+  onAddTrackInSpace: (spaceId: number) => void;
 }
 
 function findDropPos(e: PointerEvent, draggedId: number): DropPos {
@@ -66,11 +67,13 @@ export function Sidebar({
   onDeleteSpace,
   onEditSpace,
   onMoveTrack,
+  onAddTrackInSpace,
 }: Props) {
   const [menuId, setMenuId] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [spaceMenuId, setSpaceMenuId] = useState<number | null>(null);
+  const [ungroupedMenuOpen, setUngroupedMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [ungroupedCollapsed, setUngroupedCollapsed] = useState(false);
   const [draggingId, setDraggingId] = useState<number | null>(null);
@@ -224,10 +227,10 @@ export function Sidebar({
         (view.type === "track" && view.id === track.id ? " active" : "") +
         (draggingId === track.id ? " dragging" : "")
       }
+      style={{ "--tc": track.color } as React.CSSProperties}
       onPointerDown={(e) => handleTrackPointerDown(e, track)}
     >
       <span className="nav-drag-handle">⠿</span>
-      <span className="nav-dot" style={{ background: track.color }} />
 
       {renamingId === track.id ? (
         <input
@@ -261,35 +264,13 @@ export function Sidebar({
       {menuId === track.id && (
         <>
           <div className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setMenuId(null); }} />
-          <div className="track-menu" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => startRename(track)}>{t("menu.rename")}</button>
-            {spaces.length > 0 && (
-              <>
-                <div className="menu-separator" />
-                <div className="menu-section-label">{t("space.moveTo")}</div>
-                <button
-                  className={track.space_id === null ? "menu-check" : ""}
-                  onClick={() => { setMenuId(null); onMoveTrack(track.id, null, null); }}
-                >
-                  {t("space.none")}
-                </button>
-                {spaces.map((s) => (
-                  <button
-                    key={s.id}
-                    className={track.space_id === s.id ? "menu-check" : ""}
-                    onClick={() => { setMenuId(null); onMoveTrack(track.id, s.id, null); }}
-                  >
-                    {s.name}
-                  </button>
-                ))}
-                <div className="menu-separator" />
-              </>
-            )}
+          <div className="track-menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+            <button onClick={() => startRename(track)}>{t("common.rename")}</button>
             <button
               className="menu-danger"
               onClick={() => { setMenuId(null); onRequestDelete(track); }}
             >
-              {t("menu.delete")}
+              {t("common.delete")}
             </button>
           </div>
         </>
@@ -317,24 +298,50 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">{t("app.brand")}</div>
+      <div className="sidebar-top">
+        <div className="sidebar-brand">{t("app.brand")}</div>
 
-      <div className="nav-views">
-        <button
-          className={"nav-view-item" + (view.type === "dashboard" ? " active" : "")}
-          onClick={() => onSelect({ type: "dashboard" })}
-        >
-          {t("nav.dashboard")}
-        </button>
-        <button
-          className={"nav-view-item" + (view.type === "daily" ? " active" : "")}
-          onClick={() => onSelect({ type: "daily" })}
-        >
-          {t("nav.daily")}
-        </button>
+        <div className="nav-views">
+          <button
+            className={"nav-view-item" + (view.type === "dashboard" ? " active" : "")}
+            onClick={() => onSelect({ type: "dashboard" })}
+          >
+            <span className="nav-view-icon">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="1" y="1" width="6" height="6" rx="1.5"/>
+                <rect x="9" y="1" width="6" height="6" rx="1.5"/>
+                <rect x="1" y="9" width="6" height="6" rx="1.5"/>
+                <rect x="9" y="9" width="6" height="6" rx="1.5"/>
+              </svg>
+            </span>
+            <span className="nav-view-text">{t("nav.dashboard")}</span>
+          </button>
+          <button
+            className={"nav-view-item" + (view.type === "daily" ? " active" : "")}
+            onClick={() => onSelect({ type: "daily" })}
+          >
+            <span className="nav-view-icon">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <rect x="2" y="3" width="12" height="11" rx="1.5"/>
+                <path d="M5 1v4M11 1v4M2 7h12"/>
+              </svg>
+            </span>
+            <span className="nav-view-text">{t("nav.daily")}</span>
+          </button>
+        </div>
       </div>
 
-      <div className="nav-views-divider" />
+      <div className="sidebar-body">
+        <div className="nav-views-divider">
+          <svg className="nav-divider-gem" width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M 6 0 A 10 10 0 0 0 12 6 A 10 10 0 0 0 6 12 A 10 10 0 0 0 0 6 A 10 10 0 0 0 6 0 Z"
+              fill="var(--panel)"
+              stroke="var(--border)"
+              strokeWidth="1"
+            />
+          </svg>
+        </div>
 
       {spaces.map((space) => {
         const isCollapsed = collapsed.has(space.id);
@@ -351,7 +358,11 @@ export function Sidebar({
               className="sidebar-space-header"
               onClick={() => toggleCollapse(space.id)}
             >
-              <span className="sidebar-space-arrow">{isCollapsed ? "▶" : "▼"}</span>
+              <span className={`sidebar-space-arrow${isCollapsed ? " collapsed" : ""}`}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <polyline points="2,3 5,7 8,3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
               <span className="sidebar-space-name">{space.name}</span>
               <button
                 className="nav-menu-btn"
@@ -366,13 +377,16 @@ export function Sidebar({
               {spaceMenuId === space.id && (
                 <>
                   <div className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setSpaceMenuId(null); }} />
-                  <div className="track-menu" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => { setSpaceMenuId(null); onEditSpace(space); }}>{t("space.edit")}</button>
+                  <div className="track-menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                    <button onClick={() => { setSpaceMenuId(null); onAddTrackInSpace(space.id); }}>
+                      New track
+                    </button>
+                    <button onClick={() => { setSpaceMenuId(null); onEditSpace(space); }}>Edit</button>
                     <button
                       className="menu-danger"
                       onClick={() => { setSpaceMenuId(null); onDeleteSpace(space); }}
                     >
-                      {t("space.delete")}
+                      Delete
                     </button>
                   </div>
                 </>
@@ -381,9 +395,6 @@ export function Sidebar({
             {!isCollapsed && (
               <div className="sidebar-space-tracks">
                 {renderZoneTracks(spaceTracks, space.id, true)}
-                {spaceTracks.length === 0 && dropPos?.spaceId !== space.id && (
-                  <div className="sidebar-empty sidebar-empty-indent">{t("nav.empty")}</div>
-                )}
               </div>
             )}
           </div>
@@ -393,18 +404,47 @@ export function Sidebar({
       {(ungrouped.length > 0 || isDragging) && (
         <div
           data-ungrouped="true"
-          className={"sidebar-ungrouped-zone" + (dropPos !== null && dropPos.spaceId === null ? " drop-over" : "")}
+          className={"sidebar-space sidebar-ungrouped-zone" + (dropPos !== null && dropPos.spaceId === null ? " drop-over" : "")}
         >
           {spaces.length > 0 && (
             <div
               className="sidebar-space-header"
               onClick={() => setUngroupedCollapsed((v) => !v)}
             >
-              <span className="sidebar-space-arrow">{ungroupedCollapsed ? "▶" : "▼"}</span>
+              <span className={`sidebar-space-arrow${ungroupedCollapsed ? " collapsed" : ""}`}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <polyline points="2,3 5,7 8,3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
               <span className="sidebar-space-name">{t("nav.ungrouped")}</span>
+              <button
+                className="nav-menu-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setUngroupedMenuOpen((v) => !v);
+                  setSpaceMenuId(null);
+                  setMenuId(null);
+                }}
+              >
+                ⋯
+              </button>
+              {ungroupedMenuOpen && (
+                <>
+                  <div className="menu-backdrop" onClick={(e) => { e.stopPropagation(); setUngroupedMenuOpen(false); }} />
+                  <div className="track-menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                    <button onClick={() => { setUngroupedMenuOpen(false); onAdd(); }}>
+                      New track
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
-          {!ungroupedCollapsed && renderZoneTracks(ungrouped, null, spaces.length > 0)}
+          {!ungroupedCollapsed && (
+            <div className="sidebar-space-tracks">
+              {renderZoneTracks(ungrouped, null, spaces.length > 0)}
+            </div>
+          )}
         </div>
       )}
 
@@ -420,6 +460,8 @@ export function Sidebar({
           {t("nav.add")}
         </button>
       </div>
+      </div>
+
     </aside>
   );
 }

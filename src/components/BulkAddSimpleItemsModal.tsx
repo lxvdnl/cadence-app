@@ -2,12 +2,12 @@ import { useState } from "react";
 import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
-export interface BulkTopic {
+export interface BulkSimpleItem {
   title: string;
   estDays: number;
 }
 
-function parseLines(raw: string): BulkTopic[] {
+function parseLines(raw: string): BulkSimpleItem[] {
   return raw
     .split("\n")
     .map((line) => line.trim())
@@ -19,32 +19,30 @@ function parseLines(raw: string): BulkTopic[] {
       const n = parseInt(line.slice(idx + 2).trim(), 10);
       return { title, estDays: isNaN(n) ? 0 : n };
     })
-    .filter((tp) => tp.title.length > 0);
+    .filter((it) => it.title.length > 0);
 }
 
 interface Props {
   onClose: () => void;
-  onSubmit: (topics: BulkTopic[]) => void;
+  onSubmit: (items: BulkSimpleItem[]) => void;
 }
 
-export function BulkAddTopicsModal({ onClose, onSubmit }: Props) {
+export function BulkAddSimpleItemsModal({ onClose, onSubmit }: Props) {
   const [raw, setRaw] = useState("");
   const parsed = parseLines(raw);
 
   return (
     <ModalBackdrop onClose={onClose}>
       <div className="modal">
-        <h2>{t("roadmap.bulkTopicsTitle")}</h2>
-
+        <h2>{t("simple.bulkTitle")}</h2>
         <textarea
           className="template-input"
           autoFocus
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
-          placeholder={t("roadmap.bulkTopicsPlaceholder")}
+          placeholder={t("simple.bulkPlaceholder")}
           rows={10}
         />
-
         <div className="modal-actions">
           <button className="btn-ghost" onClick={onClose}>
             {t("common.cancel")}

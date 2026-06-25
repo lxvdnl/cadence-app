@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
 interface Props {
@@ -22,8 +23,8 @@ export function AddCycleItemModal({ onClose, onCreate }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
         <h2>{t("cycle.addItemTitle")}</h2>
 
         <input
@@ -66,6 +67,6 @@ export function AddCycleItemModal({ onClose, onCreate }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

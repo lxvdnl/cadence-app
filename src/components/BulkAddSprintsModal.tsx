@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
 export interface BulkSprint {
@@ -29,24 +30,12 @@ function parseLines(raw: string): BulkSprint[] {
 
 export function BulkAddSprintsModal({ onClose, onSubmit }: Props) {
   const [raw, setRaw] = useState("");
-  const [showHint, setShowHint] = useState(false);
   const parsed = parseLines(raw);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="label-row">
-          <h2>{t("roadmap.bulkTitle")}</h2>
-          <button
-            className="format-info"
-            title={t("roadmap.bulkInfo")}
-            onClick={() => setShowHint((v) => !v)}
-          >
-            i
-          </button>
-        </div>
-
-        {showHint && <div className="bulk-hint">{t("roadmap.bulkHint")}</div>}
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
+        <h2>{t("roadmap.bulkTitle")}</h2>
 
         <textarea
           className="template-input"
@@ -70,6 +59,6 @@ export function BulkAddSprintsModal({ onClose, onSubmit }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

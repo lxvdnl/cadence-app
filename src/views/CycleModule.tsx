@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CycleHistory, CycleItem, CycleSettings, Track } from "../types";
 import { parseCycleSettings } from "../types";
 import {
@@ -16,10 +17,13 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CycleItemSettingsModal } from "../components/CycleItemSettingsModal";
 import { CycleSettingsModal } from "../components/CycleSettingsModal";
 import { AddCycleItemModal } from "../components/AddCycleItemModal";
+import { BulkAddCycleItemsModal } from "../components/BulkAddCycleItemsModal";
+import type { BulkCycleItem } from "../components/BulkAddCycleItemsModal";
 import { t } from "../i18n";
 
 interface Props {
   track: Track;
+  headerActionsEl?: HTMLDivElement | null;
 }
 
 type Pending =
@@ -27,13 +31,24 @@ type Pending =
   | { kind: "end"; done: number; total: number }
   | null;
 
-export function CycleModule({ track }: Props) {
+export function CycleModule({ track, headerActionsEl }: Props) {
   const [items, setItems] = useState<CycleItem[]>([]);
   const [history, setHistory] = useState<CycleHistory[]>([]);
   const [settings, setSettings] = useState<CycleSettings>(
     parseCycleSettings(track.settings)
   );
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
+  const [itemMenuId, setItemMenuId] = useState<number | null>(null);
+  const itemMenuIdRef = useRef(itemMenuId);
+  useEffect(() => { itemMenuIdRef.current = itemMenuId; }, [itemMenuId]);
+
+  useEffect(() => {
+    if (itemMenuId === null) return;
+    const close = () => setItemMenuId(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [itemMenuId]);
   const [cycleSettingsOpen, setCycleSettingsOpen] = useState(false);
   const [editItem, setEditItem] = useState<CycleItem | null>(null);
   const [pending, setPending] = useState<Pending>(null);
@@ -73,7 +88,7 @@ export function CycleModule({ track }: Props) {
   const total = items.length;
   const allMet = total > 0 && doneCount === total;
   const cycleNo = history.length + 1;
-  const totalDone = items.reduce((a, i) => a + i.count, 0);
+  const totalDone = items.reduce((a, i) => a + Math.min(i.count, i.target), 0);
   const totalTarget = items.reduce((a, i) => a + i.target, 0);
 
   const dayNow = settings.startDate
@@ -88,6 +103,14 @@ export function CycleModule({ track }: Props) {
   const createItem = async (title: string, target: number) => {
     await createCycleItem(track.id, title, target);
     setAddDialogOpen(false);
+    await refresh();
+  };
+
+  const createBulkItems = async (bulkItems: BulkCycleItem[]) => {
+    for (const item of bulkItems) {
+      await createCycleItem(track.id, item.title, item.target);
+    }
+    setBulkAddOpen(false);
     await refresh();
   };
 
@@ -146,6 +169,16 @@ export function CycleModule({ track }: Props) {
   };
 
   return (
+    <>
+    {headerActionsEl && createPortal(
+      <button
+        className="btn-end-cycle-header"
+        onClick={() => setPending({ kind: "end", done: doneCount, total })}
+      >
+        {t("cycle.end")}
+      </button>,
+      headerActionsEl
+    )}
     <div className="cycle">
       <div className="cycle-cycles-block">
         <div
@@ -212,7 +245,17 @@ export function CycleModule({ track }: Props) {
       </div>
 
       <div className="cycle-items-block">
-        <div className="cycle-block-label cycle-items-label">{t("cycle.itemsLabel")}</div>
+        <div className="cycle-items-header">
+          <span className="cycle-block-label">{t("cycle.itemsLabel")}</span>
+          <div className="cycle-items-actions">
+            <button className="btn-add" onClick={() => setAddDialogOpen(true)}>
+              {t("cycle.addItem")}
+            </button>
+            <button className="btn-add" onClick={() => setBulkAddOpen(true)}>
+              {t("cycle.addMany")}
+            </button>
+          </div>
+        </div>
 
         {items.length === 0 && (
           <div className="placeholder">{t("cycle.empty")}</div>
@@ -222,36 +265,57 @@ export function CycleModule({ track }: Props) {
           <ul className="cycle-items">
             {items.map((item) => {
               const complete = item.count >= item.target;
-              const pct = Math.min(
-                100,
-                Math.round((item.count / item.target) * 100)
-              );
+              const pct = Math.min(100, Math.round((item.count / item.target) * 100));
               return (
                 <li
                   key={item.id}
                   className={"cycle-item-row" + (complete ? " complete" : "")}
                 >
-                  <div className="ci-main" onClick={() => setEditItem(item)}>
+                  <div className="ci-main" onClick={() => bump(item, 1)}>
                     <span className="ci-title">{item.title}</span>
                     <div className="ci-bar">
                       <div className="mini-fill" style={{ width: `${pct}%` }} />
                     </div>
                     <span className="ci-fraction">{item.count}/{item.target}</span>
                   </div>
-                  <button className="ci-btn" onClick={() => bump(item, 1)}>
+                  <button
+                    className="ci-btn"
+                    disabled={item.count <= 0}
+                    onClick={(e) => { e.stopPropagation(); bump(item, -1); }}
+                  >
+                    −
+                  </button>
+                  <button
+                    className="ci-btn"
+                    onClick={(e) => { e.stopPropagation(); bump(item, 1); }}
+                  >
                     +
                   </button>
+                  <div className="cycle-item-menu-wrap">
+                    <button
+                      className="sprint-menu-btn"
+                      onClick={(e) => { e.stopPropagation(); setItemMenuId(itemMenuId === item.id ? null : item.id); }}
+                    >
+                      ⋯
+                    </button>
+                    {itemMenuId === item.id && (
+                      <div className="sprint-menu" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => { setItemMenuId(null); setEditItem(item); }}>Edit</button>
+                        <button
+                          className="menu-danger"
+                          onClick={() => { setItemMenuId(null); setPending({ kind: "item", id: item.id, name: item.title }); }}
+                        >
+                          {t("common.delete")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
 
-        <div className="cycle-add">
-          <button className="btn-add" onClick={() => setAddDialogOpen(true)}>
-            {t("cycle.addItem")}
-          </button>
-        </div>
       </div>
 
       {addDialogOpen && (
@@ -261,16 +325,19 @@ export function CycleModule({ track }: Props) {
         />
       )}
 
+      {bulkAddOpen && (
+        <BulkAddCycleItemsModal
+          onClose={() => setBulkAddOpen(false)}
+          onSubmit={createBulkItems}
+        />
+      )}
+
       {cycleSettingsOpen && (
         <CycleSettingsModal
           cycleNo={cycleNo}
           dayNow={dayNow}
           settings={settings}
           onClose={() => setCycleSettingsOpen(false)}
-          onEndCycle={() => {
-            setCycleSettingsOpen(false);
-            setPending({ kind: "end", done: doneCount, total });
-          }}
           onSave={saveCycleSettings}
         />
       )}
@@ -280,10 +347,6 @@ export function CycleModule({ track }: Props) {
           item={editItem}
           onClose={() => setEditItem(null)}
           onSave={(payload) => handleSaveSettings(editItem, payload)}
-          onDelete={() => {
-            setEditItem(null);
-            setPending({ kind: "item", id: editItem.id, name: editItem.title });
-          }}
         />
       )}
 
@@ -297,10 +360,12 @@ export function CycleModule({ track }: Props) {
           body={
             pending.kind === "item"
               ? t("confirm.deleteItem.body", { name: pending.name })
-              : t("confirm.endCycle.body", {
-                  done: String(pending.done),
-                  total: String(pending.total),
-                })
+              : t(
+                  pending.done >= pending.total
+                    ? "confirm.endCycle.bodyDone"
+                    : "confirm.endCycle.bodyUnfinished",
+                  { done: String(pending.done), total: String(pending.total) }
+                )
           }
           confirmLabel={
             pending.kind === "end" ? t("cycle.end") : t("common.delete")
@@ -312,5 +377,6 @@ export function CycleModule({ track }: Props) {
         />
       )}
     </div>
+    </>
   );
 }

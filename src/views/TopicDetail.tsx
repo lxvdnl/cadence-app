@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -23,11 +23,25 @@ export function TopicDetail({ topicId, trackName, onChanged, onDelete }: Props) 
   const [topic, setTopic] = useState<Topic | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [markdownDraft, setMarkdownDraft] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, [markdownDraft, editMode]);
 
   useEffect(() => {
     let alive = true;
     getTopic(topicId).then((tp) => {
-      if (alive && tp) setTopic(tp);
+      if (alive && tp) {
+        setTopic(tp);
+        setMarkdownDraft(tp.markdown);
+      }
     });
     return () => { alive = false; };
   }, [topicId]);
@@ -39,12 +53,11 @@ export function TopicDetail({ topicId, trackName, onChanged, onDelete }: Props) 
     onChanged();
   };
 
-  const handleSave = async (title: string, estDays: number, markdown: string) => {
+  const handleSave = async (title: string, estDays: number) => {
     if (!topic) return;
-    const fields: Partial<Pick<Topic, "title" | "est_hours" | "markdown">> = {};
+    const fields: Partial<Pick<Topic, "title" | "est_hours">> = {};
     if (title !== topic.title) fields.title = title;
     if (estDays !== topic.est_hours) fields.est_hours = estDays;
-    if (markdown !== topic.markdown) fields.markdown = markdown;
     if (Object.keys(fields).length > 0) {
       await updateTopic(topicId, fields);
       setTopic({ ...topic, ...fields });
@@ -53,50 +66,108 @@ export function TopicDetail({ topicId, trackName, onChanged, onDelete }: Props) 
     setSettingsOpen(false);
   };
 
+  const switchToPreview = async () => {
+    if (!topic) return;
+    if (markdownDraft !== topic.markdown) {
+      await updateTopic(topicId, { markdown: markdownDraft });
+      setTopic({ ...topic, markdown: markdownDraft });
+    }
+    setEditMode(false);
+  };
+
   if (!topic) return <div className="placeholder">{t("common.loading")}</div>;
 
   return (
     <div className="topic-detail">
-      <div className="topic-breadcrumb">
-        <span className="breadcrumb-track">{trackName}</span>
-        <span className="breadcrumb-sep">/</span>
-        <span className="breadcrumb-current">{topic.title}</span>
-        <div className="breadcrumb-gap" />
-        <button className="btn-icon-sm" onClick={() => setSettingsOpen(true)}>
-          ⚙
-        </button>
+      <div className="topic-header-block">
+        <span className="topic-track-label">{trackName}</span>
+        <div className="topic-title-row">
+          <h1 className="topic-detail-title">{topic.title}</h1>
+          {topic.est_hours > 0 && (
+            <span className="topic-est-days">{topic.est_hours}d</span>
+          )}
+          <div className="topic-title-spacer" />
+          <div className="topic-menu-wrap">
+            <button
+              className="sprint-menu-btn"
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <>
+                <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
+                <div className="sprint-menu" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => { setMenuOpen(false); setSettingsOpen(true); }}>
+                    Edit
+                  </button>
+                  <div className="menu-separator" />
+                  <button
+                    className="menu-danger"
+                    onClick={() => { setMenuOpen(false); setDeleteConfirm(true); }}
+                  >
+                    {t("common.delete")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="status-row">
         {STATUSES.map((s) => (
           <button
             key={s}
-            className={"status-btn" + (topic.status === s ? " active" : "")}
+            className={`status-btn status-btn--${s}${topic.status === s ? " active" : ""}`}
             onClick={() => setStatus(s)}
           >
             {t(`topic.status.${s}`)}
           </button>
         ))}
-        {topic.est_hours > 0 && (
-          <span className="topic-est-days">{topic.est_hours}d</span>
+      </div>
+
+      <div className="md-area">
+        <div className="md-area-bar">
+          <div className="md-toggle">
+            <button
+              className={`md-toggle-btn${!editMode ? " active" : ""}`}
+              onClick={switchToPreview}
+            >
+              Preview
+            </button>
+            <button
+              className={`md-toggle-btn${editMode ? " active" : ""}`}
+              onClick={() => setEditMode(true)}
+            >
+              Edit
+            </button>
+          </div>
+        </div>
+
+        {editMode ? (
+          <textarea
+            ref={textareaRef}
+            className="topic-notes-editor"
+            value={markdownDraft}
+            onChange={(e) => setMarkdownDraft(e.target.value)}
+            placeholder={t("topic.notesPlaceholder")}
+          />
+        ) : (
+          <div className="md-preview markdown topic-preview">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {topic.markdown || "_No notes yet_"}
+            </ReactMarkdown>
+          </div>
         )}
       </div>
 
-      <div className="md-preview markdown topic-preview">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-          {topic.markdown || "_No notes yet — open ⚙ to add_"}
-        </ReactMarkdown>
-      </div>
 
       {settingsOpen && (
         <TopicSettingsModal
           topic={topic}
           onClose={() => setSettingsOpen(false)}
           onSave={handleSave}
-          onDelete={() => {
-            setSettingsOpen(false);
-            setDeleteConfirm(true);
-          }}
         />
       )}
 

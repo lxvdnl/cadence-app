@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CycleItem } from "../types";
+import { ModalBackdrop } from "./ModalBackdrop";
 import { t } from "../i18n";
 
 interface SavePayload {
@@ -13,10 +14,9 @@ interface Props {
   item: CycleItem;
   onClose: () => void;
   onSave: (payload: SavePayload) => Promise<void>;
-  onDelete: () => void;
 }
 
-export function CycleItemSettingsModal({ item, onClose, onSave, onDelete }: Props) {
+export function CycleItemSettingsModal({ item, onClose, onSave }: Props) {
   const [title, setTitle] = useState(item.title);
   const [count, setCount] = useState(item.count);
   const [target, setTarget] = useState(item.target);
@@ -31,8 +31,8 @@ export function CycleItemSettingsModal({ item, onClose, onSave, onDelete }: Prop
     });
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose}>
+      <div className="modal">
         <input
           className="ci-modal-title-input"
           value={title}
@@ -59,7 +59,7 @@ export function CycleItemSettingsModal({ item, onClose, onSave, onDelete }: Prop
           </div>
         </div>
 
-        <div className="ci-setting-row">
+        <div className="ci-setting-row ci-setting-last">
           <span className="ci-setting-label">{t("cycle.targetTitle")}</span>
           <div className="ci-counter">
             <button
@@ -87,9 +87,6 @@ export function CycleItemSettingsModal({ item, onClose, onSave, onDelete }: Prop
         </div>
 
         <div className="modal-actions ci-settings-footer">
-          <button className="btn-danger-sm" onClick={onDelete}>
-            {t("common.delete")}
-          </button>
           <button className="btn-ghost" onClick={onClose}>
             {t("common.cancel")}
           </button>
@@ -98,6 +95,6 @@ export function CycleItemSettingsModal({ item, onClose, onSave, onDelete }: Prop
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
