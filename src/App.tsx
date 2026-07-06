@@ -157,7 +157,6 @@ function App() {
         ) : view.type === "daily" ? (
           <DailyView
             tracks={tracks}
-            spaces={spaces}
             onOpenTopic={(topicId, trackId) => navigate({ type: "topic", topicId, trackId })}
             onOpenTrack={(id) => navigate({ type: "track", id })}
           />

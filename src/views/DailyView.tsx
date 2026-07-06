@@ -1,119 +1,124 @@
-import { useEffect, useState } from "react";
-import type { CycleItem, SimpleItem, Space, Track } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CycleItem, SimpleItem, Track } from "../types";
+import { parseHabitSettings } from "../types";
 import {
   addHabitCheckin,
   bumpCycleItem,
   listActiveTopics,
-  listBacklogTopics,
   listCycleItems,
   listHabitCheckins,
   listSimpleItems,
   removeHabitCheckin,
+  roadmapProgress,
   setSimpleItemDone,
-  updateTopic,
   type ActiveTopicRow,
 } from "../db";
+import type { Progress } from "../db";
+import { computeDailyStreak, computeWeeklyData, toDateStr } from "../metrics";
 import { t } from "../i18n";
 
 interface Props {
   tracks: Track[];
-  spaces: Space[];
   onOpenTopic: (topicId: number, trackId: number) => void;
   onOpenTrack: (trackId: number) => void;
 }
 
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+const ORDER_KEY = "daily.order";
+const HIDDEN_KEY = "daily.hidden";
+
+function loadIds(key: string): number[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "number") : [];
+  } catch {
+    return [];
+  }
 }
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
-export function DailyView({ tracks, spaces, onOpenTopic, onOpenTrack }: Props) {
-  const today = todayStr();
-  const [spaceFilter, setSpaceFilter] = useState<number | "all">("all");
+export function DailyView({ tracks, onOpenTopic, onOpenTrack }: Props) {
+  const today = toDateStr(new Date());
 
-  const [checkedToday, setCheckedToday] = useState<Set<number>>(new Set());
-  const [activeTopics, setActiveTopics] = useState<ActiveTopicRow[]>([]);
-  const [backlogTopics, setBacklogTopics] = useState<ActiveTopicRow[]>([]);
+  const [habitCheckins, setHabitCheckins] = useState<Record<number, Set<string>>>({});
   const [cycleItems, setCycleItems] = useState<Record<number, CycleItem[]>>({});
   const [simpleItems, setSimpleItems] = useState<Record<number, SimpleItem[]>>({});
-  const [expandedBacklog, setExpandedBacklog] = useState<Set<number>>(new Set());
+  const [activeTopics, setActiveTopics] = useState<ActiveTopicRow[]>([]);
+  const [roadmapProg, setRoadmapProg] = useState<Record<number, Progress>>({});
 
-  const habitTracks = tracks.filter((tr) => tr.format === "habit");
-  const roadmapTracks = tracks.filter((tr) => tr.format === "roadmap");
-  const cycleTracks = tracks.filter((tr) => tr.format === "cycle");
-  const simpleTracks = tracks.filter((tr) => tr.format === "simple");
+  const [order, setOrder] = useState<number[]>(() => loadIds(ORDER_KEY));
+  const [hidden, setHidden] = useState<Set<number>>(() => new Set(loadIds(HIDDEN_KEY)));
 
-  const inSpaceTrack = (tr: Track) =>
-    spaceFilter === "all" || tr.space_id === spaceFilter;
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [openMenu, setOpenMenu] = useState<number | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ id: number; x: number; y: number } | null>(null);
 
-  const visibleHabits = habitTracks.filter(inSpaceTrack);
-  const visibleRoadmap = roadmapTracks.filter(inSpaceTrack);
-  const visibleCycles = cycleTracks.filter(inSpaceTrack);
-  const visibleSimple = simpleTracks.filter(inSpaceTrack);
-
-  const activeByTrack = (trackId: number) =>
-    activeTopics.filter((tp) => tp.track_id === trackId);
-  const backlogByTrack = (trackId: number) =>
-    backlogTopics.filter((tp) => tp.track_id === trackId);
+  useEffect(() => {
+    localStorage.setItem(ORDER_KEY, JSON.stringify(order));
+  }, [order]);
+  useEffect(() => {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hidden]));
+  }, [hidden]);
 
   useEffect(() => {
     let alive = true;
-
     const load = async () => {
-      const checkedSet = new Set<number>();
-      for (const tr of habitTracks) {
-        const checkins = await listHabitCheckins(tr.id);
-        if (checkins.some((c) => c.date.startsWith(today))) checkedSet.add(tr.id);
-      }
-
-      const topics = await listActiveTopics();
-      const backlog = await listBacklogTopics();
-
-      const items: Record<number, CycleItem[]> = {};
-      for (const tr of cycleTracks) {
-        items[tr.id] = await listCycleItems(tr.id);
-      }
-
+      const checkins: Record<number, Set<string>> = {};
+      const cItems: Record<number, CycleItem[]> = {};
       const sItems: Record<number, SimpleItem[]> = {};
-      for (const tr of simpleTracks) {
-        sItems[tr.id] = await listSimpleItems(tr.id);
+      const rProg: Record<number, Progress> = {};
+      for (const tr of tracks) {
+        if (tr.format === "habit") {
+          const rows = await listHabitCheckins(tr.id);
+          checkins[tr.id] = new Set(rows.map((r) => r.date.slice(0, 10)));
+        } else if (tr.format === "cycle") {
+          cItems[tr.id] = await listCycleItems(tr.id);
+        } else if (tr.format === "simple") {
+          sItems[tr.id] = await listSimpleItems(tr.id);
+        } else if (tr.format === "roadmap") {
+          rProg[tr.id] = await roadmapProgress(tr.id);
+        }
       }
-
+      const topics = await listActiveTopics();
       if (!alive) return;
-      setCheckedToday(checkedSet);
-      setActiveTopics(topics);
-      setBacklogTopics(backlog);
-      setCycleItems(items);
+      setHabitCheckins(checkins);
+      setCycleItems(cItems);
       setSimpleItems(sItems);
+      setActiveTopics(topics);
+      setRoadmapProg(rProg);
     };
-
     load();
     return () => { alive = false; };
   }, [tracks]);
 
+  const orderedTracks = useMemo(() => {
+    const byId = new Map(tracks.map((tr) => [tr.id, tr]));
+    const seen = new Set<number>();
+    const out: Track[] = [];
+    for (const id of order) {
+      const tr = byId.get(id);
+      if (tr && !seen.has(id)) { out.push(tr); seen.add(id); }
+    }
+    for (const tr of tracks) {
+      if (!seen.has(tr.id)) { out.push(tr); seen.add(tr.id); }
+    }
+    return out.filter((tr) => !hidden.has(tr.id));
+  }, [tracks, order, hidden]);
+
+  const hiddenTracks = tracks.filter((tr) => hidden.has(tr.id));
+
   const toggleHabit = async (trackId: number) => {
-    if (checkedToday.has(trackId)) {
+    const set = habitCheckins[trackId] ?? new Set<string>();
+    if (set.has(today)) {
       await removeHabitCheckin(trackId, today);
-      setCheckedToday((prev) => { const s = new Set(prev); s.delete(trackId); return s; });
     } else {
       await addHabitCheckin(trackId, today);
-      setCheckedToday((prev) => new Set([...prev, trackId]));
     }
-  };
-
-  const takeOn = async (id: number) => {
-    await updateTopic(id, { status: "active" });
-    const [topics, backlog] = await Promise.all([listActiveTopics(), listBacklogTopics()]);
-    setActiveTopics(topics);
-    setBacklogTopics(backlog);
-  };
-
-  const markDone = async (id: number) => {
-    await updateTopic(id, { status: "done" });
-    setActiveTopics(await listActiveTopics());
+    const rows = await listHabitCheckins(trackId);
+    setHabitCheckins((prev) => ({ ...prev, [trackId]: new Set(rows.map((r) => r.date.slice(0, 10))) }));
   };
 
   const bumpCycle = async (item: CycleItem) => {
@@ -129,20 +134,244 @@ export function DailyView({ tracks, spaces, onOpenTopic, onOpenTrack }: Props) {
     setSimpleItems((prev) => ({ ...prev, [item.track_id]: updated }));
   };
 
-  const toggleBacklog = (trackId: number) => {
-    setExpandedBacklog((prev) => {
-      const s = new Set(prev);
-      if (s.has(trackId)) s.delete(trackId);
-      else s.add(trackId);
-      return s;
+  const ensureOrder = (ids: number[]) => {
+    setOrder((prev) => {
+      const merged = [...prev];
+      for (const id of ids) if (!merged.includes(id)) merged.push(id);
+      return merged;
     });
   };
 
-  const isEmpty =
-    visibleHabits.length === 0 &&
-    visibleRoadmap.length === 0 &&
-    visibleCycles.length === 0 &&
-    visibleSimple.length === 0;
+  const dragRef = useRef<{ id: number; startY: number; active: boolean } | null>(null);
+
+  const reorderTo = (overId: number) => {
+    const draggingId = dragRef.current?.id;
+    if (draggingId == null || draggingId === overId) return;
+    setOrder((prev) => {
+      const ids = prev.length ? [...prev] : orderedTracks.map((tr) => tr.id);
+      const from = ids.indexOf(draggingId);
+      const to = ids.indexOf(overId);
+      if (from === -1 || to === -1) return prev;
+      const next = [...ids];
+      next.splice(from, 1);
+      next.splice(to, 0, draggingId);
+      return next;
+    });
+  };
+
+  const handleDragPointerDown = (e: React.PointerEvent, id: number) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    ensureOrder(orderedTracks.map((tr) => tr.id));
+    dragRef.current = { id, startY: e.clientY, active: false };
+
+    const onMove = (ev: PointerEvent) => {
+      const info = dragRef.current;
+      if (!info) return;
+      if (!info.active) {
+        if (Math.abs(ev.clientY - info.startY) < 5) return;
+        info.active = true;
+        setDragId(info.id);
+      }
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const card = el?.closest("[data-gw-id]") as HTMLElement | null;
+      if (card) {
+        const overId = Number(card.dataset.gwId);
+        if (!Number.isNaN(overId)) reorderTo(overId);
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      dragRef.current = null;
+      setDragId(null);
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  };
+
+  const removeCard = (id: number) => {
+    setHidden((prev) => new Set(prev).add(id));
+    setCtxMenu(null);
+  };
+
+  const restore = (id: number) => {
+    setHidden((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    ensureOrder([id]);
+    setAdding(false);
+  };
+
+  const renderBody = (tr: Track) => {
+    if (tr.format === "habit") {
+      const settings = parseHabitSettings(tr.settings);
+      const set = habitCheckins[tr.id] ?? new Set<string>();
+      const dates = [...set];
+      const todayDone = set.has(today);
+      let pct = 0;
+      let frac = "";
+      let label = "";
+      if (settings.mode === "daily") {
+        const streak = computeDailyStreak(dates).streak;
+        frac = `🔥 ${streak}`;
+        label = t("habit.dayStreak");
+        pct = todayDone ? 100 : 0;
+      } else {
+        const wd = computeWeeklyData(settings.daysPerWeek, dates, settings.startDate);
+        frac = `${wd.currentCount}/${settings.daysPerWeek}`;
+        label = t("daily.thisWeek");
+        pct = settings.daysPerWeek > 0 ? Math.min(100, Math.round((wd.currentCount / settings.daysPerWeek) * 100)) : 0;
+      }
+      return (
+        <div className="gw-body-row">
+          <div className="gw-progress-wrap">
+            <div className="gw-progress"><div className={`gw-progress-fill${todayDone ? " done" : ""}`} style={{ width: `${pct}%` }} /></div>
+            <span className="gw-frac">{frac} <span className="gw-frac-label">{label}</span></span>
+          </div>
+          <button
+            className={`gw-mark-btn${todayDone ? " done" : ""}`}
+            onClick={() => toggleHabit(tr.id)}
+          >
+            {todayDone ? t("daily.doneTodayShort") : t("daily.markToday")}
+          </button>
+        </div>
+      );
+    }
+
+    if (tr.format === "cycle") {
+      const items = cycleItems[tr.id] ?? [];
+      return (
+        <div className="gw-chips">
+          {items.length === 0 && <span className="gw-muted">{t("cycle.empty")}</span>}
+          {items.map((it) => {
+            const done = it.count >= it.target;
+            return (
+              <button
+                key={it.id}
+                className={`gw-chip${done ? " done" : ""}`}
+                onClick={() => bumpCycle(it)}
+                disabled={done}
+                title={it.title}
+              >
+                <span className="gw-chip-name">{it.title}</span>
+                <span className="gw-chip-count">{it.count}/{it.target}</span>
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (tr.format === "simple") {
+      const items = simpleItems[tr.id] ?? [];
+      const total = items.length;
+      const done = items.filter((i) => i.done).length;
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      const undone = items.filter((i) => !i.done);
+      const menuOpen = openMenu === tr.id;
+      return (
+        <div className="gw-body-row">
+          <div className="gw-progress-wrap">
+            <div className="gw-progress"><div className={`gw-progress-fill${total > 0 && done === total ? " done" : ""}`} style={{ width: `${pct}%` }} /></div>
+            <span className="gw-frac">{done}/{total}</span>
+          </div>
+          {undone.length > 0 ? (
+            <div className="gw-menu-wrap">
+              <button
+                className="gw-more-btn"
+                onClick={() => setOpenMenu(menuOpen ? null : tr.id)}
+              >
+                {undone.length} to do ▾
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="gw-menu-backdrop" onClick={() => setOpenMenu(null)} />
+                  <div className="gw-menu gw-menu-checks">
+                    {undone.map((it) => (
+                      <button key={it.id} className="gw-menu-check" onClick={() => toggleSimple(it)}>
+                        <span className="gw-check-box" />
+                        <span className="gw-menu-text">{it.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <span className="gw-done-label">{t("daily.allDone")}</span>
+          )}
+        </div>
+      );
+    }
+
+    // roadmap — progress over all topics + active list
+    const active = activeTopics.filter((tp) => tp.track_id === tr.id);
+    const prog = roadmapProg[tr.id] ?? { done: 0, total: 0 };
+    const pct = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+    const complete = prog.total > 0 && prog.done === prog.total;
+    const menuOpen = openMenu === tr.id;
+    return (
+      <div className="gw-body-row">
+        <div className="gw-progress-wrap">
+          <div className="gw-progress"><div className={`gw-progress-fill${complete ? " done" : ""}`} style={{ width: `${pct}%` }} /></div>
+          <span className="gw-frac">{prog.done}/{prog.total}</span>
+        </div>
+        {active.length > 0 ? (
+          <div className="gw-menu-wrap">
+            <button
+              className="gw-more-btn"
+              onClick={() => setOpenMenu(menuOpen ? null : tr.id)}
+            >
+              {active.length} active ▾
+            </button>
+            {menuOpen && (
+              <>
+                <div className="gw-menu-backdrop" onClick={() => setOpenMenu(null)} />
+                <div className="gw-menu">
+                  {active.map((tp) => (
+                    <button
+                      key={tp.id}
+                      className="gw-menu-item"
+                      onClick={() => { setOpenMenu(null); onOpenTopic(tp.id, tp.track_id); }}
+                    >
+                      <span className="gw-menu-sprint">{tp.sprint_title}</span>
+                      <span className="gw-menu-text">{tp.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <span className="gw-muted">{t("daily.noActive")}</span>
+        )}
+      </div>
+    );
+  };
+
+  const isComplete = (tr: Track): boolean => {
+    if (tr.format === "habit") {
+      const settings = parseHabitSettings(tr.settings);
+      const set = habitCheckins[tr.id] ?? new Set<string>();
+      if (settings.mode === "daily") return set.has(today);
+      const wd = computeWeeklyData(settings.daysPerWeek, [...set], settings.startDate);
+      return wd.currentCount >= settings.daysPerWeek;
+    }
+    if (tr.format === "cycle") {
+      const items = cycleItems[tr.id] ?? [];
+      return items.length > 0 && items.every((i) => i.count >= i.target);
+    }
+    if (tr.format === "simple") {
+      const items = simpleItems[tr.id] ?? [];
+      return items.length > 0 && items.every((i) => i.done);
+    }
+    if (tr.format === "roadmap") {
+      const prog = roadmapProg[tr.id] ?? { done: 0, total: 0 };
+      return prog.total > 0 && prog.done === prog.total;
+    }
+    return false;
+  };
 
   return (
     <div className="view">
@@ -151,205 +380,66 @@ export function DailyView({ tracks, spaces, onOpenTopic, onOpenTrack }: Props) {
           <h1>{t("nav.daily")}</h1>
           <div className="daily-date">{formatDate(new Date())}</div>
         </div>
+        <div className="view-header-spacer" style={{ flex: 1 }} />
+        {hiddenTracks.length > 0 && (
+          <button className="gw-add-btn" onClick={() => setAdding((v) => !v)}>
+            + {t("daily.addCard")}
+          </button>
+        )}
       </div>
 
-      {spaces.length > 0 && (
-        <div className="dash-space-tabs">
-          <button
-            className={"chip-filter" + (spaceFilter === "all" ? " active" : "")}
-            onClick={() => setSpaceFilter("all")}
-          >
-            {t("dash.filterAll")}
-          </button>
-          {spaces.map((s) => (
-            <button
-              key={s.id}
-              className={"chip-filter" + (spaceFilter === s.id ? " active" : "")}
-              onClick={() => setSpaceFilter(s.id)}
-            >
-              {s.name}
+      {adding && hiddenTracks.length > 0 && (
+        <div className="gw-add-picker">
+          {hiddenTracks.map((tr) => (
+            <button key={tr.id} className="gw-add-chip" onClick={() => restore(tr.id)}>
+              <span className="nav-dot" style={{ background: tr.color }} />
+              {tr.name}
             </button>
           ))}
         </div>
       )}
 
-      {visibleHabits.length > 0 && (
-        <div className="daily-type-section">
-          <div className="daily-type-header">{t("daily.habits")}</div>
-          {visibleHabits.map((tr) => {
-            const done = checkedToday.has(tr.id);
-            return (
-              <div
-                key={tr.id}
-                className={"daily-card" + (done ? " daily-card--done" : "")}
-                onClick={() => toggleHabit(tr.id)}
-              >
-                <div className="daily-card-header">
-                  <span className="nav-dot" style={{ background: tr.color }} />
-                  <span className="daily-card-name">{tr.name}</span>
-                  <input
-                    type="checkbox"
-                    className="daily-check"
-                    checked={done}
-                    onChange={() => toggleHabit(tr.id)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
+      {orderedTracks.length === 0 ? (
+        <div className="placeholder"><p>{t("daily.gatewayEmpty")}</p></div>
+      ) : (
+        <div className="gw-list">
+          {orderedTracks.map((tr) => (
+            <div
+              key={tr.id}
+              data-gw-id={tr.id}
+              className={
+                "gw-card" +
+                (isComplete(tr) ? " complete" : "") +
+                (dragId === tr.id ? " dragging" : "")
+              }
+              onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ id: tr.id, x: e.clientX, y: e.clientY }); }}
+            >
+              <div className="gw-card-head">
+                <span
+                  className="gw-handle"
+                  onPointerDown={(e) => handleDragPointerDown(e, tr.id)}
+                >
+                  ⠿
+                </span>
+                <span className="nav-dot" style={{ background: tr.color }} />
+                <span className="gw-name" onClick={() => onOpenTrack(tr.id)}>{tr.name}</span>
+                <span className="gw-badge">{t(`format.${tr.format}`)}</span>
               </div>
-            );
-          })}
+              <div className="gw-card-body">{renderBody(tr)}</div>
+            </div>
+          ))}
         </div>
       )}
 
-      {visibleRoadmap.length > 0 && (
-        <div className="daily-type-section">
-          <div className="daily-type-header">{t("format.roadmap")}</div>
-          {visibleRoadmap.map((tr) => {
-            const active = activeByTrack(tr.id);
-            const backlog = backlogByTrack(tr.id);
-            if (active.length === 0 && backlog.length === 0) return null;
-            const isExpanded = expandedBacklog.has(tr.id);
-            return (
-              <div key={tr.id} className="daily-card">
-                <div className="daily-card-header" onClick={() => onOpenTrack(tr.id)}>
-                  <span className="nav-dot" style={{ background: tr.color }} />
-                  <span className="daily-card-name">{tr.name}</span>
-                </div>
-                {active.length > 0 && (
-                  <div className="daily-card-body">
-                    {active.map((tp) => (
-                      <div
-                        key={tp.id}
-                        className="daily-item daily-item--clickable"
-                        onClick={() => onOpenTopic(tp.id, tp.track_id)}
-                      >
-                        <span className="daily-item-path">
-                          <span className="daily-item-sprint">{tp.sprint_title}</span>
-                          <span className="daily-item-sep">/</span>
-                          <span className="daily-item-title">{tp.title}</span>
-                        </span>
-                        {tp.est_hours > 0 && (
-                          <span className="daily-item-meta">{tp.est_hours}d</span>
-                        )}
-                        <button
-                          className="daily-done-btn"
-                          onClick={(e) => { e.stopPropagation(); markDone(tp.id); }}
-                        >
-                          {t("topic.status.done")}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {backlog.length > 0 && (
-                  <div className="daily-card-footer">
-                    <button
-                      className="daily-backlog-toggle"
-                      onClick={() => toggleBacklog(tr.id)}
-                    >
-                      <span>{isExpanded ? "▼" : "▶"}</span>
-                      {t("daily.suggestions")}
-                      <span className="daily-suggestions-count">{backlog.length}</span>
-                    </button>
-                    {isExpanded && backlog.map((tp) => (
-                      <div key={tp.id} className="daily-item daily-item--backlog">
-                        <span className="daily-item-path">
-                          <span className="daily-item-sprint">{tp.sprint_title}</span>
-                          <span className="daily-item-sep">/</span>
-                          <span className="daily-item-title">{tp.title}</span>
-                        </span>
-                        {tp.est_hours > 0 && (
-                          <span className="daily-item-meta">{tp.est_hours}d</span>
-                        )}
-                        <button
-                          className="daily-takeon-btn"
-                          onClick={(e) => { e.stopPropagation(); takeOn(tp.id); }}
-                        >
-                          {t("daily.takeOn")}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {visibleCycles.length > 0 && (
-        <div className="daily-type-section">
-          <div className="daily-type-header">{t("daily.cycle")}</div>
-          {visibleCycles.map((tr) => {
-            const remaining = (cycleItems[tr.id] ?? []).filter((i) => i.count < i.target);
-            if (remaining.length === 0) return null;
-            return (
-              <div key={tr.id} className="daily-card">
-                <div className="daily-card-header" onClick={() => onOpenTrack(tr.id)}>
-                  <span className="nav-dot" style={{ background: tr.color }} />
-                  <span className="daily-card-name">{tr.name}</span>
-                </div>
-                <div className="daily-card-body">
-                  {remaining.map((item) => (
-                    <div key={item.id} className="daily-item">
-                      <span className="daily-item-title">{item.title}</span>
-                      <span className="daily-item-meta">{item.count}/{item.target}</span>
-                      <button
-                        className="daily-bump-btn"
-                        onClick={(e) => { e.stopPropagation(); bumpCycle(item); }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {visibleSimple.length > 0 && (
-        <div className="daily-type-section">
-          <div className="daily-type-header">{t("format.simple")}</div>
-          {visibleSimple.map((tr) => {
-            const items = simpleItems[tr.id] ?? [];
-            if (items.length === 0) return null;
-            const undone = items.filter((i) => !i.done);
-            return (
-              <div key={tr.id} className="daily-card">
-                <div className="daily-card-header" onClick={() => onOpenTrack(tr.id)}>
-                  <span className="nav-dot" style={{ background: tr.color }} />
-                  <span className="daily-card-name">{tr.name}</span>
-                </div>
-                <div className="daily-card-body">
-                  {undone.length > 0 ? undone.map((item) => (
-                    <div
-                      key={item.id}
-                      className="daily-item daily-item--clickable"
-                      onClick={() => toggleSimple(item)}
-                    >
-                      <input
-                        type="checkbox"
-                        className="daily-check"
-                        checked={Boolean(item.done)}
-                        readOnly
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <span className="daily-item-title">{item.title}</span>
-                    </div>
-                  )) : (
-                    <div className="daily-item-empty">{t("daily.empty")}</div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {isEmpty && (
-        <div className="placeholder"><p>{t("daily.empty")}</p></div>
+      {ctxMenu && (
+        <>
+          <div className="gw-menu-backdrop" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }} />
+          <div className="gw-ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+            <button className="gw-menu-item gw-menu-remove" onClick={() => removeCard(ctxMenu.id)}>
+              {t("daily.removeCard", { name: t("nav.daily") })}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
